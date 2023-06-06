@@ -1,7 +1,8 @@
 SHELL=/bin/bash -o pipefail
 
 PROJECT_NAME=redis-cluster-operator
-REPO=ucloud/$(PROJECT_NAME)
+REPO=dinesh-murugiah/$(PROJECT_NAME)
+DOCKER_REGISTRY=local
 
 # replace with your public registry
 ALTREPO=$(DOCKER_REGISTRY)/$(PROJECT_NAME)
@@ -25,11 +26,11 @@ build-go:
 	-o $(BIN_DIR)/$(PROJECT_NAME)-darwin-amd64 cmd/manager/main.go
 
 build-image:
-	docker build --build-arg VERSION=$(VERSION) --build-arg GIT_SHA=$(GIT_SHA) -t $(ALTREPO):$(VERSION) .
+	DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(VERSION) --build-arg GIT_SHA=$(GIT_SHA) -t $(ALTREPO):$(VERSION) .
 	docker tag $(ALTREPO):$(VERSION) $(ALTREPO):latest
 
 build-e2e:
-	docker build -t $(E2EALTREPO):$(VERSION)  -f test/e2e/Dockerfile .
+	DOCKER_BUILDKIT=1 docker build -t $(E2EALTREPO):$(VERSION)  -f test/e2e/Dockerfile .
 
 build-tools:
 	bash hack/docker/redis-tools/make.sh build
