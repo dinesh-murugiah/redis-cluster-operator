@@ -5,8 +5,11 @@ REPO=dinesh-murugiah/$(PROJECT_NAME)
 DOCKER_REGISTRY=local
 
 # replace with your public registry
-ALTREPO=$(DOCKER_REGISTRY)/$(PROJECT_NAME)
-E2EALTREPO=$(DOCKER_REGISTRY)/$(PROJECT_NAME)-e2e
+#ALTREPO=$(DOCKER_REGISTRY)/$(PROJECT_NAME)
+#E2EALTREPO=$(DOCKER_REGISTRY)/$(PROJECT_NAME)-e2e
+
+ALTREPO=diineshkumar/cluster-operator
+E2EALTREPO=diineshkumar/cluster-operator
 
 VERSION=$(shell git describe --always --tags --dirty | sed "s/\(.*\)-g`git rev-parse --short HEAD`/\1/")
 GIT_SHA=$(shell git rev-parse --short HEAD)
@@ -26,7 +29,7 @@ build-go:
 	-o $(BIN_DIR)/$(PROJECT_NAME)-darwin-amd64 cmd/manager/main.go
 
 build-image:
-	DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(VERSION) --build-arg GIT_SHA=$(GIT_SHA) -t $(ALTREPO):$(VERSION) .
+	DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(VERSION) --build-arg GIT_SHA=$(GIT_SHA) -t $(ALTREPO):$(VERSION) . --push
 	docker tag $(ALTREPO):$(VERSION) $(ALTREPO):latest
 
 build-e2e:

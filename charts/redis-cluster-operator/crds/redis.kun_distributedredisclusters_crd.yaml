@@ -16,8 +16,7 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: DistributedRedisCluster is the Schema for the distributedredisclusters
-          API
+        description: DistributedRedisCluster is the Schema for the distributedredisclusters API
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
@@ -1434,8 +1433,7 @@ spec:
                 type: array
             type: object
           status:
-            description: DistributedRedisClusterStatus defines the observed state
-              of DistributedRedisCluster
+            description: DistributedRedisClusterStatus defines the observed state of DistributedRedisCluster
             properties:
               maxReplicationFactor:
                 format: int32
@@ -4407,6 +4405,7 @@ spec:
                                             description: Protocol for port. Must be
                                               UDP, TCP, or SCTP. Defaults to "TCP".
                                             type: string
+                                            default: tcp
                                         required:
                                         - containerPort
                                         type: object

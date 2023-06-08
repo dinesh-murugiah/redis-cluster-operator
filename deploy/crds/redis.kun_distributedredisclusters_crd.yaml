@@ -152,6 +152,33 @@ spec:
                 minReplicationFactor:
                   type: integer
                   format: int32
+                nodes:
+                  items:
+                    description: RedisClusterNode represent a RedisCluster Node
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      ip:
+                        type: string
+                      masterRef:
+                        type: string
+                      nodeName:
+                        type: string
+                      podName:
+                        type: string
+                      port:
+                        type: string
+                      role:
+                        description: RedisRole RedisCluster Node Role type
+                        type: string
+                      slots:
+                        items:
+                          type: string
+                        type: array
+                      statefulSet:
+                        type: string
+                  type: array
       served: true
       storage: true
       subresources:

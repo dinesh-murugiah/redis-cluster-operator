@@ -16,13 +16,14 @@ spec:
       containers:
         - name: redis-cluster-operator
           # Replace this with the built image name
-          image: fishu/redis-cluster-operator:latest
+          image: docker.io/diineshkumar/cluster-operator
           command:
           - redis-cluster-operator
           args:
+          - --zap-level=debug
           - --rename-command-path=/etc/redisconf
           - --rename-command-file=redis.conf
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           env:
             - name: WATCH_NAMESPACE
               value: ""

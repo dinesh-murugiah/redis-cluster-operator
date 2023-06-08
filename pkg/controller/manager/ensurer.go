@@ -66,10 +66,11 @@ func (r *realEnsureResource) EnsureRedisStatefulsets(cluster *redisv1alpha1.Dist
 
 func (r *realEnsureResource) ensureRedisStatefulset(cluster *redisv1alpha1.DistributedRedisCluster, ssName, svcName string,
 	labels map[string]string) (bool, error) {
+	/* Commenting out to support launch in 1.24 k8s
 	if err := r.ensureRedisPDB(cluster, ssName, labels); err != nil {
 		return false, err
 	}
-
+	*/
 	ss, err := r.statefulSetClient.GetStatefulSet(cluster.Namespace, ssName)
 	if err == nil {
 		if shouldUpdateRedis(cluster, ss) {
