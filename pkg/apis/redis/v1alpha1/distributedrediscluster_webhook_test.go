@@ -1,12 +1,13 @@
 package v1alpha1
 
 import (
-	"k8s.io/apimachinery/pkg/runtime"
 	"testing"
+
+	"k8s.io/apimachinery/pkg/runtime"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestDistributedRedisCluster_ValidateCreate(t *testing.T) {
@@ -25,6 +26,7 @@ func TestDistributedRedisCluster_ValidateCreate(t *testing.T) {
 			name: "invalid ServiceName",
 			fields: fields{
 				Spec: DistributedRedisClusterSpec{
+					InitContainers:  nil,
 					Image:           "",
 					Command:         nil,
 					MasterSize:      0,
@@ -40,7 +42,7 @@ func TestDistributedRedisCluster_ValidateCreate(t *testing.T) {
 					Resources:       nil,
 					PasswordSecret:  nil,
 					Monitor:         nil,
-					Init:            nil,
+					Restore:         nil,
 				},
 			},
 			wantErr: true,

@@ -2,8 +2,11 @@ package redisclusterbackup
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/robfig/cron"
 	"github.com/spf13/pflag"
 	batch "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -191,6 +194,9 @@ type ReconcileRedisClusterBackup struct {
 func (r *ReconcileRedisClusterBackup) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 	reqLogger.Info("Reconciling RedisClusterBackup")
+	var sched cron.Schedule
+	var cronEnabled bool = false
+	var backupSchedTime time.Duration
 
 	// Fetch the RedisClusterBackup instance
 	instance := &redisv1alpha1.RedisClusterBackup{}
@@ -235,12 +241,24 @@ func (r *ReconcileRedisClusterBackup) Reconcile(request reconcile.Request) (reco
 	//		return reconcile.Result{}, err
 	//	}
 	//}
-
-	if err := r.create(reqLogger, instance); err != nil {
-		return reconcile.Result{}, err
+	if instance.Spec.BackupCron && len(instance.Spec.BackupSchedule) != 0 {
+		reqLogger.Info("Getting backup schedule info")
+		sched, err = cron.ParseStandard(instance.Spec.BackupSchedule)
+		if err != nil {
+			reqLogger.Error(err, "Error Parsing cron schedule")
+			return reconcile.Result{}, fmt.Errorf("unparaseable schedule %q: %v", instance.Spec.BackupSchedule, err)
+		}
+		cronEnabled = true
 	}
+	err, cronRetry := r.create(reqLogger, instance)
+	if cronEnabled && cronRetry {
+		backupSchedTime = (sched.Next(time.Now()).Sub(time.Now()))
+	}
+	if cronRetry {
+		return reconcile.Result{RequeueAfter: backupSchedTime}, err
+	}
+	return reconcile.Result{}, err
 
-	return reconcile.Result{}, nil
 }
 
 func (r *ReconcileRedisClusterBackup) finalizeBackup(reqLogger logr.Logger, b *redisv1alpha1.RedisClusterBackup) error {

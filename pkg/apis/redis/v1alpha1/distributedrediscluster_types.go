@@ -15,6 +15,7 @@ type DistributedRedisClusterSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
+	InitContainers   []corev1.Container            `json:"initContainers,omitempty"`
 	Image            string                        `json:"image,omitempty"`
 	ImagePullPolicy  corev1.PullPolicy             `json:"imagePullPolicy,omitempty"`
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
@@ -25,18 +26,18 @@ type DistributedRedisClusterSpec struct {
 	ServiceName      string                        `json:"serviceName,omitempty"`
 	Config           map[string]string             `json:"config,omitempty"`
 	// Set RequiredAntiAffinity to force the master-slave node anti-affinity.
-	RequiredAntiAffinity 		bool                         `json:"requiredAntiAffinity,omitempty"`
-	Affinity             		*corev1.Affinity             `json:"affinity,omitempty"`
-	NodeSelector         		map[string]string            `json:"nodeSelector,omitempty"`
-	ToleRations          		[]corev1.Toleration          `json:"toleRations,omitempty"`
-	SecurityContext      		*corev1.PodSecurityContext   `json:"securityContext,omitempty"`
-	ContainerSecurityContext	*corev1.SecurityContext		 `json:"containerSecurityContext,omitempty"`
-	Annotations          		map[string]string            `json:"annotations,omitempty"`
-	Storage              		*RedisStorage                `json:"storage,omitempty"`
-	Resources            		*corev1.ResourceRequirements `json:"resources,omitempty"`
-	PasswordSecret       		*corev1.LocalObjectReference `json:"passwordSecret,omitempty"`
-	Monitor              		*AgentSpec                   `json:"monitor,omitempty"`
-	Init                 		*InitSpec                    `json:"init,omitempty"`
+	RequiredAntiAffinity     bool                         `json:"requiredAntiAffinity,omitempty"`
+	Affinity                 *corev1.Affinity             `json:"affinity,omitempty"`
+	NodeSelector             map[string]string            `json:"nodeSelector,omitempty"`
+	ToleRations              []corev1.Toleration          `json:"toleRations,omitempty"`
+	SecurityContext          *corev1.PodSecurityContext   `json:"securityContext,omitempty"`
+	ContainerSecurityContext *corev1.SecurityContext      `json:"containerSecurityContext,omitempty"`
+	Annotations              map[string]string            `json:"annotations,omitempty"`
+	Storage                  *RedisStorage                `json:"storage,omitempty"`
+	Resources                *corev1.ResourceRequirements `json:"resources,omitempty"`
+	PasswordSecret           *corev1.LocalObjectReference `json:"passwordSecret,omitempty"`
+	Monitor                  *AgentSpec                   `json:"monitor,omitempty"`
+	Restore                  *RestoreSpec                 `json:"restoreContainer,omitempty"`
 }
 
 type AgentSpec struct {
@@ -85,7 +86,7 @@ type PrometheusSpec struct {
 	//Annotations map[string]string `json:"annotations,omitempty"`
 }
 
-type InitSpec struct {
+type RestoreSpec struct {
 	BackupSource *BackupSourceSpec `json:"backupSource,omitempty"`
 }
 

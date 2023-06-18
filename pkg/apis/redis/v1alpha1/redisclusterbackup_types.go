@@ -22,6 +22,8 @@ type RedisClusterBackupSpec struct {
 	store.Backend         `json:",inline"`
 	PodSpec               *PodSpec `json:"podSpec,omitempty"`
 	ActiveDeadlineSeconds *int64   `json:"activeDeadlineSeconds,omitempty"`
+	BackupCron            bool     `json:"backupCronEnable,omitempty"`
+	BackupSchedule        string   `json:"backupSchedule,omitempty"`
 }
 
 type PodSpec struct {

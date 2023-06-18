@@ -87,12 +87,18 @@ func NewStatefulSetForCR(cluster *redisv1alpha1.DistributedRedisCluster, ssName,
 	if spec.Monitor != nil {
 		ss.Spec.Template.Spec.Containers = append(ss.Spec.Template.Spec.Containers, redisExporterContainer(cluster, password))
 	}
+
+	if spec.InitContainers != nil {
+		initContainers := getInitContainersWithRedisEnv(cluster, password)
+		ss.Spec.Template.Spec.InitContainers = append(ss.Spec.Template.Spec.InitContainers, initContainers...)
+	}
+
 	if cluster.IsRestoreFromBackup() && cluster.IsRestoreRunning() && cluster.Status.Restore.Backup != nil {
-		initContainer, err := redisInitContainer(cluster, password)
+		restoreInitContainer, err := redisRestoreInitContainer(cluster, password)
 		if err != nil {
 			return nil, err
 		}
-		ss.Spec.Template.Spec.InitContainers = append(ss.Spec.Template.Spec.InitContainers, initContainer)
+		ss.Spec.Template.Spec.InitContainers = append(ss.Spec.Template.Spec.InitContainers, restoreInitContainer)
 	}
 	return ss, nil
 }
@@ -337,7 +343,7 @@ func redisExporterContainer(cluster *redisv1alpha1.DistributedRedisCluster, pass
 	return container
 }
 
-func redisInitContainer(cluster *redisv1alpha1.DistributedRedisCluster, password *corev1.EnvVar) (corev1.Container, error) {
+func redisRestoreInitContainer(cluster *redisv1alpha1.DistributedRedisCluster, password *corev1.EnvVar) (corev1.Container, error) {
 	backup := cluster.Status.Restore.Backup
 	backupSpec := backup.Spec.Backend
 	location, err := backupSpec.Location()
@@ -418,6 +424,27 @@ func redisInitContainer(cluster *redisv1alpha1.DistributedRedisCluster, password
 	container.Env = customContainerEnv(container.Env, cluster.Spec.Env)
 
 	return container, nil
+}
+
+func getInitContainersWithRedisEnv(cluster *redisv1alpha1.DistributedRedisCluster, password *corev1.EnvVar) []corev1.Container {
+	initContainers := getContainersWithRedisEnv(cluster.Spec.InitContainers, cluster.Spec.Env, password)
+
+	return initContainers
+}
+
+func getContainersWithRedisEnv(cs []corev1.Container, e []corev1.EnvVar, password *corev1.EnvVar) []corev1.Container {
+	var containers []corev1.Container
+	for _, c := range cs {
+		if e != nil {
+			c.Env = append(c.Env, e...)
+		}
+		if password != nil {
+			c.Env = append(c.Env, *password)
+		}
+		containers = append(containers, c)
+	}
+
+	return containers
 }
 
 func customContainerEnv(env []corev1.EnvVar, customEnv []corev1.EnvVar) []corev1.EnvVar {

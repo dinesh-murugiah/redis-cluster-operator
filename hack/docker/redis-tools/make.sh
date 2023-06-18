@@ -5,7 +5,7 @@
 set -xeou pipefail
 
 GOPATH=$(go env GOPATH)
-REPO_ROOT=$GOPATH/src/github.com/ucloud/redis-cluster-operator
+REPO_ROOT=$(pwd)
 
 source "$REPO_ROOT/hack/lib/lib.sh"
 source "$REPO_ROOT/hack/lib/image.sh"
@@ -33,7 +33,7 @@ build() {
     mv rclone-"${RCLONE_VER}"-linux-amd64/rclone rclone
   fi
 
-  local cmd="docker build --pull -t $DOCKER_REGISTRY/$IMG:$TAG ."
+  local cmd="docker build --pull -t $DOCKER_REGISTRY/$IMG:$TAG . --load"
   echo $cmd; $cmd
 
   rm -rf rclone-"${RCLONE_VER}"-linux-amd64*

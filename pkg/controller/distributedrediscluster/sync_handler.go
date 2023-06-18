@@ -131,7 +131,7 @@ func dbLoadedFromDiskWhenRestore(cluster *redisv1alpha1.DistributedRedisCluster,
 func (r *ReconcileDistributedRedisCluster) initRestore(cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger) (bool, error) {
 	update := false
 	if cluster.Status.Restore.Backup == nil {
-		initSpec := cluster.Spec.Init
+		initSpec := cluster.Spec.Restore
 		backup, err := r.crController.GetRedisClusterBackup(initSpec.BackupSource.Namespace, initSpec.BackupSource.Name)
 		if err != nil {
 			reqLogger.Error(err, "GetRedisClusterBackup")

@@ -279,7 +279,7 @@ func RestoreDRC(drc *redisv1alpha1.DistributedRedisCluster, drcb *redisv1alpha1.
 			Storage:         drc.Spec.Storage,
 			Monitor:         drc.Spec.Monitor,
 			Annotations:     drc.Spec.Annotations,
-			Init: &redisv1alpha1.InitSpec{BackupSource: &redisv1alpha1.BackupSourceSpec{
+			Restore: &redisv1alpha1.RestoreSpec{BackupSource: &redisv1alpha1.BackupSourceSpec{
 				Namespace: drcb.Namespace,
 				Name:      drcb.Name,
 			}},

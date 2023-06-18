@@ -18,7 +18,13 @@ import (
 	"github.com/ucloud/redis-cluster-operator/pkg/utils"
 )
 
-func (r *ReconcileRedisClusterBackup) create(reqLogger logr.Logger, backup *redisv1alpha1.RedisClusterBackup) error {
+const (
+	backupNoRetry = false
+	backupRetry   = true
+)
+
+func (r *ReconcileRedisClusterBackup) create(reqLogger logr.Logger, backup *redisv1alpha1.RedisClusterBackup) (error, bool) {
+
 	if backup.Status.StartTime == nil {
 		t := metav1.Now()
 		backup.Status.StartTime = &t
@@ -29,13 +35,13 @@ func (r *ReconcileRedisClusterBackup) create(reqLogger logr.Logger, backup *redi
 				event.BackupError,
 				err.Error(),
 			)
-			return err
+			return err, backupRetry
 		}
 	}
 
 	// Do not process "completed", aka "failed" or "succeeded" or "ignored", backups.
 	if backup.Status.Phase == redisv1alpha1.BackupPhaseFailed ||
-		backup.Status.Phase == redisv1alpha1.BackupPhaseSucceeded ||
+		//backup.Status.Phase == redisv1alpha1.BackupPhaseSucceeded ||
 		backup.Status.Phase == redisv1alpha1.BackupPhaseIgnored {
 		delete(backup.GetLabels(), redisv1alpha1.LabelBackupStatus)
 		if err := r.crController.UpdateCR(backup); err != nil {
@@ -45,14 +51,14 @@ func (r *ReconcileRedisClusterBackup) create(reqLogger logr.Logger, backup *redi
 				event.BackupError,
 				err.Error(),
 			)
-			return err
+			return err, backupRetry
 		}
-		return nil
+		return nil, backupNoRetry
 	}
 
 	if err := r.ValidateBackup(backup); err != nil {
 		if k8sutil.IsRequestRetryable(err) {
-			return err
+			return err, backupRetry
 		}
 		r.markAsFailedBackup(backup, err.Error())
 		r.recorder.Event(
@@ -61,7 +67,7 @@ func (r *ReconcileRedisClusterBackup) create(reqLogger logr.Logger, backup *redi
 			event.BackupFailed,
 			err.Error(),
 		)
-		return nil // stop retry
+		return nil, backupNoRetry // stop retry
 	}
 
 	running, err := r.isBackupRunning(backup)
@@ -72,10 +78,10 @@ func (r *ReconcileRedisClusterBackup) create(reqLogger logr.Logger, backup *redi
 			event.BackupError,
 			err.Error(),
 		)
-		return err
+		return err, backupRetry
 	}
 	if running {
-		return r.handleBackupJob(reqLogger, backup)
+		return r.handleBackupJob(reqLogger, backup), backupNoRetry
 	}
 
 	cluster, err := r.crController.GetDistributedRedisCluster(backup.Namespace, backup.Spec.RedisClusterName)
@@ -86,7 +92,7 @@ func (r *ReconcileRedisClusterBackup) create(reqLogger logr.Logger, backup *redi
 			event.BackupError,
 			err.Error(),
 		)
-		return err
+		return err, backupRetry
 	}
 
 	secret, err := osm.NewRcloneSecret(r.client, backup.RCloneSecretName(), backup.Namespace, backup.Spec.Backend, []metav1.OwnerReference{
@@ -106,7 +112,7 @@ func (r *ReconcileRedisClusterBackup) create(reqLogger logr.Logger, backup *redi
 			event.BackupFailed,
 			msg,
 		)
-		return nil // don't retry
+		return nil, backupRetry // don't retry
 	}
 
 	if err := k8sutil.CreateSecret(r.client, secret, reqLogger); err != nil {
@@ -116,7 +122,7 @@ func (r *ReconcileRedisClusterBackup) create(reqLogger logr.Logger, backup *redi
 			event.BackupError,
 			err.Error(),
 		)
-		return err
+		return err, backupRetry
 	}
 
 	if backup.Spec.Local == nil {
@@ -128,7 +134,7 @@ func (r *ReconcileRedisClusterBackup) create(reqLogger logr.Logger, backup *redi
 				event.BackupFailed,
 				err.Error(),
 			)
-			return nil
+			return nil, backupRetry
 		}
 	}
 
@@ -142,9 +148,9 @@ func (r *ReconcileRedisClusterBackup) create(reqLogger logr.Logger, backup *redi
 			message,
 		)
 		if k8sutil.IsRequestRetryable(err) {
-			return err
+			return err, backupRetry
 		}
-		return r.markAsFailedBackup(backup, message)
+		return r.markAsFailedBackup(backup, message), backupNoRetry
 	}
 
 	backup.Status.Phase = redisv1alpha1.BackupPhaseRunning
@@ -158,7 +164,7 @@ func (r *ReconcileRedisClusterBackup) create(reqLogger logr.Logger, backup *redi
 			event.BackupFailed,
 			err.Error(),
 		)
-		return err
+		return err, backupRetry
 	}
 
 	backup.Labels[redisv1alpha1.LabelClusterName] = backup.Spec.RedisClusterName
@@ -170,7 +176,7 @@ func (r *ReconcileRedisClusterBackup) create(reqLogger logr.Logger, backup *redi
 			event.BackupError,
 			err.Error(),
 		)
-		return err
+		return err, backupRetry
 	}
 
 	reqLogger.Info("Backup running")
@@ -188,10 +194,10 @@ func (r *ReconcileRedisClusterBackup) create(reqLogger logr.Logger, backup *redi
 			event.BackupError,
 			err.Error(),
 		)
-		return err
+		return err, backupRetry
 	}
 
-	return nil
+	return nil, backupNoRetry
 }
 
 func (r *ReconcileRedisClusterBackup) ValidateBackup(backup *redisv1alpha1.RedisClusterBackup) error {

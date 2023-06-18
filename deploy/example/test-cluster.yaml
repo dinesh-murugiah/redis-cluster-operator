@@ -6,7 +6,10 @@ metadata:
     redis.kun/scope: cluster-scoped
   name: example-distributedrediscluster
 spec:
-  image: redis:5.0.4-alpine
+  initContainers:
+  - name: initialize
+    image: hello-world:latest
+    imagePullPolicy: IfNotPresent
   masterSize: 3
   clusterReplicas: 1
   image: redis:6.2.12
