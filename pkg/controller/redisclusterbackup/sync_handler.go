@@ -81,7 +81,7 @@ func (r *ReconcileRedisClusterBackup) create(reqLogger logr.Logger, backup *redi
 		return err, backupRetry
 	}
 	if running {
-		return r.handleBackupJob(reqLogger, backup), backupNoRetry
+		return r.handleBackupJob(reqLogger, backup)
 	}
 
 	cluster, err := r.crController.GetDistributedRedisCluster(backup.Namespace, backup.Spec.RedisClusterName)
@@ -153,6 +153,14 @@ func (r *ReconcileRedisClusterBackup) create(reqLogger logr.Logger, backup *redi
 		return r.markAsFailedBackup(backup, message), backupNoRetry
 	}
 
+	reqLogger.Info("backup_job_info")
+	reqLogger.Info("backup_job_info", "job_name", job.Name)
+	reqLogger.Info("backup_job_info", "job_namespace", job.Namespace)
+	reqLogger.Info("backup_job_info", "job_containername", job.Spec.Template.Spec.Containers[0].Name)
+	reqLogger.Info("backup_job_info", "job_containername", job.Spec.Template.Spec.Containers[1].Name)
+	reqLogger.Info("backup_job_info", "job_containername", job.Spec.Template.Spec.Containers[2].Name)
+	reqLogger.Info("Cluster_info", "cluster_status", cluster.Status.Status)
+
 	backup.Status.Phase = redisv1alpha1.BackupPhaseRunning
 	backup.Status.MasterSize = cluster.Spec.MasterSize
 	backup.Status.ClusterReplicas = cluster.Spec.ClusterReplicas
@@ -216,6 +224,7 @@ func (r *ReconcileRedisClusterBackup) ValidateBackup(backup *redisv1alpha1.Redis
 }
 
 func (r *ReconcileRedisClusterBackup) getBackupJob(reqLogger logr.Logger, backup *redisv1alpha1.RedisClusterBackup, cluster *redisv1alpha1.DistributedRedisCluster) (*batchv1.Job, error) {
+	var ttltime int32 = 0
 	jobName := backup.JobName()
 	jobLabel := map[string]string{
 		redisv1alpha1.LabelClusterName:  backup.Spec.RedisClusterName,
@@ -249,7 +258,8 @@ func (r *ReconcileRedisClusterBackup) getBackupJob(reqLogger logr.Logger, backup
 			},
 		},
 		Spec: batchv1.JobSpec{
-			ActiveDeadlineSeconds: backup.Spec.ActiveDeadlineSeconds,
+			TTLSecondsAfterFinished: &ttltime,
+			ActiveDeadlineSeconds:   backup.Spec.ActiveDeadlineSeconds,
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
 					Containers: containers,
@@ -305,6 +315,7 @@ func (r *ReconcileRedisClusterBackup) backupContainers(backup *redisv1alpha1.Red
 		return nil, err
 	}
 	masterNum := int(cluster.Spec.MasterSize)
+	reqLogger.Info("backupContainers", "numberof-masters", masterNum)
 	containers := make([]corev1.Container, masterNum)
 	i := 0
 	for _, node := range cluster.Status.Nodes {
@@ -326,7 +337,7 @@ func (r *ReconcileRedisClusterBackup) backupContainers(backup *redisv1alpha1.Red
 			container := corev1.Container{
 				Name:            fmt.Sprintf("%s-%d", redisv1alpha1.JobTypeBackup, i),
 				Image:           backup.Spec.Image,
-				ImagePullPolicy: "Always",
+				ImagePullPolicy: "IfNotPresent",
 				Args: []string{
 					redisv1alpha1.JobTypeBackup,
 					fmt.Sprintf(`--data-dir=%s`, redisv1alpha1.BackupDumpDir),
@@ -365,9 +376,15 @@ func (r *ReconcileRedisClusterBackup) backupContainers(backup *redisv1alpha1.Red
 				container.Lifecycle = backup.Spec.PodSpec.Lifecycle
 			}
 			containers[i] = container
+			reqLogger.Info("backup_container", "name", containers[i].Name)
+			reqLogger.Info("backup_container", "image", containers[i].Image)
 			i++
 		}
+
 	}
+
+	reqLogger.Info("backupContainers", "NoofContainers", i)
+
 	return containers, nil
 }
 
@@ -446,7 +463,7 @@ func (r *ReconcileRedisClusterBackup) createPVCForBackup(backup *redisv1alpha1.R
 	return nil
 }
 
-func (r *ReconcileRedisClusterBackup) handleBackupJob(reqLogger logr.Logger, backup *redisv1alpha1.RedisClusterBackup) error {
+func (r *ReconcileRedisClusterBackup) handleBackupJob(reqLogger logr.Logger, backup *redisv1alpha1.RedisClusterBackup) (error, bool) {
 	reqLogger.Info("Handle Backup Job")
 	jobObj, err := r.jobController.GetJob(backup.Namespace, backup.JobName())
 	if err != nil {
@@ -463,7 +480,7 @@ func (r *ReconcileRedisClusterBackup) handleBackupJob(reqLogger logr.Logger, bac
 					event.BackupError,
 					err.Error(),
 				)
-				return err
+				return err, backupRetry
 			}
 			r.recorder.Event(
 				backup,
@@ -471,12 +488,12 @@ func (r *ReconcileRedisClusterBackup) handleBackupJob(reqLogger logr.Logger, bac
 				event.BackupFailed,
 				msg,
 			)
-			return nil
+			return nil, backupNoRetry
 		}
-		return err
+		return err, backupRetry
 	}
 	if !isJobFinished(jobObj) {
-		return fmt.Errorf("wait for job Succeeded or Failed")
+		return fmt.Errorf("wait for job Succeeded or Failed"), backupNoRetry
 	}
 
 	cluster, err := r.crController.GetDistributedRedisCluster(backup.Namespace, backup.Spec.RedisClusterName)
@@ -487,7 +504,7 @@ func (r *ReconcileRedisClusterBackup) handleBackupJob(reqLogger logr.Logger, bac
 			event.BackupError,
 			err.Error(),
 		)
-		return err
+		return err, backupRetry
 	}
 
 	jobType := jobObj.Status.Conditions[0].Type
@@ -511,7 +528,7 @@ func (r *ReconcileRedisClusterBackup) handleBackupJob(reqLogger logr.Logger, bac
 						event.BackupError,
 						err.Error(),
 					)
-					return err
+					return err, backupRetry
 				}
 
 				delete(backup.GetLabels(), redisv1alpha1.LabelBackupStatus)
@@ -522,7 +539,7 @@ func (r *ReconcileRedisClusterBackup) handleBackupJob(reqLogger logr.Logger, bac
 						event.BackupError,
 						err.Error(),
 					)
-					return err
+					return err, backupRetry
 				}
 
 				if jobSucceeded {
@@ -540,6 +557,7 @@ func (r *ReconcileRedisClusterBackup) handleBackupJob(reqLogger logr.Logger, bac
 						event.BackupSuccessful,
 						msg,
 					)
+					return nil, backupRetry
 				} else {
 					msg := "Failed to complete backup"
 					reqLogger.Info(msg)
@@ -555,6 +573,7 @@ func (r *ReconcileRedisClusterBackup) handleBackupJob(reqLogger logr.Logger, bac
 						event.BackupFailed,
 						msg,
 					)
+					return nil, backupNoRetry
 				}
 			} else {
 				msg := "One Backup is already Running"
@@ -568,7 +587,7 @@ func (r *ReconcileRedisClusterBackup) handleBackupJob(reqLogger logr.Logger, bac
 						event.BackupError,
 						err.Error(),
 					)
-					return err
+					return err, backupNoRetry
 				}
 				r.recorder.Event(
 					backup,
@@ -581,5 +600,5 @@ func (r *ReconcileRedisClusterBackup) handleBackupJob(reqLogger logr.Logger, bac
 		}
 	}
 
-	return nil
+	return nil, backupRetry
 }

@@ -1,3 +1,15 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  annotations:
+    # if your operator run as cluster-scoped, add this annotations
+    redis.kun/scope: cluster-scoped
+  name: mysecret
+type: Opaque
+stringData:
+  password: pass
+---
+
 apiVersion: redis.kun/v1alpha1
 kind: DistributedRedisCluster
 metadata:
@@ -12,6 +24,8 @@ spec:
     imagePullPolicy: IfNotPresent
   masterSize: 3
   clusterReplicas: 1
+  passwordSecret:
+    name: mysecret
   image: redis:6.2.12
   resources:
     limits:

@@ -253,11 +253,17 @@ func (r *ReconcileRedisClusterBackup) Reconcile(request reconcile.Request) (reco
 	err, cronRetry := r.create(reqLogger, instance)
 	if cronEnabled && cronRetry {
 		backupSchedTime = (sched.Next(time.Now()).Sub(time.Now()))
+		reqLogger.Info("cron Retry", "Backup Schedule time", backupSchedTime)
 	}
 	if cronRetry {
-		return reconcile.Result{RequeueAfter: backupSchedTime}, err
+		if err != nil {
+			return reconcile.Result{RequeueAfter: backupSchedTime}, err
+		} else {
+			return reconcile.Result{RequeueAfter: backupSchedTime}, nil
+		}
+
 	}
-	return reconcile.Result{}, err
+	return reconcile.Result{}, nil
 
 }
 
