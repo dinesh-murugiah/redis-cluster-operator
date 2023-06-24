@@ -14,4 +14,4 @@ spec:
     emptyDir:
       sizeLimit: 1Gi
   backupCronEnable: true
-  backupSchedule: "*/1 * * * *"
+  backupSchedule: "*/5 * * * *"
