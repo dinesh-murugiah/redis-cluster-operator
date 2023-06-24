@@ -225,6 +225,7 @@ func (r *ReconcileRedisClusterBackup) ValidateBackup(backup *redisv1alpha1.Redis
 
 func (r *ReconcileRedisClusterBackup) getBackupJob(reqLogger logr.Logger, backup *redisv1alpha1.RedisClusterBackup, cluster *redisv1alpha1.DistributedRedisCluster) (*batchv1.Job, error) {
 	var ttltime int32 = 0
+	var jobcompletions int32 = cluster.Spec.MasterSize
 	jobName := backup.JobName()
 	jobLabel := map[string]string{
 		redisv1alpha1.LabelClusterName:  backup.Spec.RedisClusterName,
@@ -259,6 +260,7 @@ func (r *ReconcileRedisClusterBackup) getBackupJob(reqLogger logr.Logger, backup
 		},
 		Spec: batchv1.JobSpec{
 			TTLSecondsAfterFinished: &ttltime,
+			Completions:             &jobcompletions,
 			ActiveDeadlineSeconds:   backup.Spec.ActiveDeadlineSeconds,
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
