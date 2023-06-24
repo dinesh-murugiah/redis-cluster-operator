@@ -117,18 +117,19 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 
 	jobPred := predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			log.WithValues("namespace", e.MetaNew.GetNamespace(), "name", e.MetaNew.GetName()).V(4).Info("Call Job UpdateFunc")
+			log.WithValues("namespace", e.MetaNew.GetNamespace(), "name", e.MetaNew.GetName()).Info("Call Job UpdateFunc")
 			if !utils.ShoudManage(e.MetaNew) {
-				log.WithValues("namespace", e.MetaNew.GetNamespace(), "name", e.MetaNew.GetName()).V(4).Info("Job UpdateFunc Not Manage")
+				log.WithValues("namespace", e.MetaNew.GetNamespace(), "name", e.MetaNew.GetName()).Info("Job UpdateFunc Not Manage")
 				return false
 			}
 			newObj := e.ObjectNew.(*batch.Job)
-			if isJobCompleted(newObj) {
+			if isJobCompleted(newObj) && newObj.DeletionTimestamp == nil {
 				return true
 			}
 			return false
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
+			log.WithValues("namespace", e.Meta.GetNamespace(), "name", e.Meta.GetName()).Info("Call Job Delete")
 			if !utils.ShoudManage(e.Meta) {
 				return false
 			}
@@ -143,9 +144,9 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 			return false
 		},
 		CreateFunc: func(e event.CreateEvent) bool {
-			log.WithValues("namespace", e.Meta.GetNamespace(), "name", e.Meta.GetName()).V(4).Info("Call Job CreateFunc")
+			log.WithValues("namespace", e.Meta.GetNamespace(), "name", e.Meta.GetName()).Info("Call Job CreateFunc")
 			if !utils.ShoudManage(e.Meta) {
-				log.WithValues("namespace", e.Meta.GetNamespace(), "name", e.Meta.GetName()).V(4).Info("Job CreateFunc Not Manage")
+				log.WithValues("namespace", e.Meta.GetNamespace(), "name", e.Meta.GetName()).Info("Job CreateFunc Not Manage")
 				return false
 			}
 			job := e.Object.(*batch.Job)
