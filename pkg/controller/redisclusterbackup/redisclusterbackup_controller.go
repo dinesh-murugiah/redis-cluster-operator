@@ -138,7 +138,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 				return false
 			}
 			if job.Status.Succeeded == 0 && job.Status.Failed <= utils.Int32(job.Spec.BackoffLimit) {
-				return true
+				return false
 			}
 			return false
 		},
@@ -150,7 +150,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 			}
 			job := e.Object.(*batch.Job)
 			if job.Status.Succeeded > 0 || job.Status.Failed >= utils.Int32(job.Spec.BackoffLimit) {
-				return true
+				return false
 			}
 			return false
 		},
