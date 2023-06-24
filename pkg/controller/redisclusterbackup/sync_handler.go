@@ -25,7 +25,23 @@ const (
 
 func (r *ReconcileRedisClusterBackup) create(reqLogger logr.Logger, backup *redisv1alpha1.RedisClusterBackup) (error, bool) {
 
-	if backup.Status.StartTime == nil {
+	if err := r.ValidateBackup(backup); err != nil {
+		if k8sutil.IsRequestRetryable(err) {
+			return err, backupRetry
+		}
+		r.markAsFailedBackup(backup, err.Error())
+		r.recorder.Event(
+			backup,
+			corev1.EventTypeWarning,
+			event.BackupFailed,
+			err.Error(),
+		)
+		return nil, backupNoRetry // stop retry
+	}
+
+	if backup.Status.StartTime == nil ||
+		(backup.Status.Phase == redisv1alpha1.BackupPhaseSucceeded ||
+			backup.Status.Phase == redisv1alpha1.BackupPhaseFailed) {
 		t := metav1.Now()
 		backup.Status.StartTime = &t
 		if err := r.crController.UpdateCRStatus(backup); err != nil {
@@ -40,9 +56,9 @@ func (r *ReconcileRedisClusterBackup) create(reqLogger logr.Logger, backup *redi
 	}
 
 	// Do not process "completed", aka "failed" or "succeeded" or "ignored", backups.
-	if backup.Status.Phase == redisv1alpha1.BackupPhaseFailed ||
-		//backup.Status.Phase == redisv1alpha1.BackupPhaseSucceeded ||
-		backup.Status.Phase == redisv1alpha1.BackupPhaseIgnored {
+	if backup.Status.Phase == redisv1alpha1.BackupPhaseIgnored {
+		// backup.Status.Phase == redisv1alpha1.BackupPhaseFailed ||
+		//backup.Status.Phase == redisv1alpha1.BackupPhaseSucceeded {
 		delete(backup.GetLabels(), redisv1alpha1.LabelBackupStatus)
 		if err := r.crController.UpdateCR(backup); err != nil {
 			r.recorder.Event(
@@ -54,20 +70,6 @@ func (r *ReconcileRedisClusterBackup) create(reqLogger logr.Logger, backup *redi
 			return err, backupRetry
 		}
 		return nil, backupNoRetry
-	}
-
-	if err := r.ValidateBackup(backup); err != nil {
-		if k8sutil.IsRequestRetryable(err) {
-			return err, backupRetry
-		}
-		r.markAsFailedBackup(backup, err.Error())
-		r.recorder.Event(
-			backup,
-			corev1.EventTypeWarning,
-			event.BackupFailed,
-			err.Error(),
-		)
-		return nil, backupNoRetry // stop retry
 	}
 
 	running, err := r.isBackupRunning(backup)
@@ -152,14 +154,6 @@ func (r *ReconcileRedisClusterBackup) create(reqLogger logr.Logger, backup *redi
 		}
 		return r.markAsFailedBackup(backup, message), backupNoRetry
 	}
-
-	reqLogger.Info("backup_job_info")
-	reqLogger.Info("backup_job_info", "job_name", job.Name)
-	reqLogger.Info("backup_job_info", "job_namespace", job.Namespace)
-	reqLogger.Info("backup_job_info", "job_containername", job.Spec.Template.Spec.Containers[0].Name)
-	reqLogger.Info("backup_job_info", "job_containername", job.Spec.Template.Spec.Containers[1].Name)
-	reqLogger.Info("backup_job_info", "job_containername", job.Spec.Template.Spec.Containers[2].Name)
-	reqLogger.Info("Cluster_info", "cluster_status", cluster.Status.Status)
 
 	backup.Status.Phase = redisv1alpha1.BackupPhaseRunning
 	backup.Status.MasterSize = cluster.Spec.MasterSize
@@ -490,7 +484,7 @@ func (r *ReconcileRedisClusterBackup) handleBackupJob(reqLogger logr.Logger, bac
 				event.BackupFailed,
 				msg,
 			)
-			return nil, backupNoRetry
+			return nil, backupRetry
 		}
 		return err, backupRetry
 	}
