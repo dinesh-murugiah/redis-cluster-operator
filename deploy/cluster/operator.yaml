@@ -16,7 +16,7 @@ spec:
       containers:
         - name: redis-cluster-operator
           # Replace this with the built image name
-          image: docker.io/dineshkumar/cluster-operator:ec20cb3-dirty
+          image: docker.io/dineshkumar/cluster-operator:d906d86
           command:
           - redis-cluster-operator
           args:
