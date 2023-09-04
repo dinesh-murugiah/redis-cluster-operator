@@ -12,7 +12,7 @@ import (
 
 	redisv1alpha1 "github.com/ucloud/redis-cluster-operator/pkg/apis/redis/v1alpha1"
 	"github.com/ucloud/redis-cluster-operator/pkg/config"
-	"github.com/ucloud/redis-cluster-operator/pkg/osm"
+
 	"github.com/ucloud/redis-cluster-operator/pkg/resources/configmaps"
 	"github.com/ucloud/redis-cluster-operator/pkg/utils"
 )
@@ -29,16 +29,23 @@ const (
 	graceTime = 30
 
 	configMapVolumeName = "conf"
+	aclConfigMapVolName = "acl"
 )
 
 // NewStatefulSetForCR creates a new StatefulSet for the given Cluster.
 func NewStatefulSetForCR(cluster *redisv1alpha1.DistributedRedisCluster, ssName, svcName string,
 	labels map[string]string) (*appsv1.StatefulSet, error) {
-	password := redisPassword(cluster)
+	var password *corev1.EnvVar
 	volumes := redisVolumes(cluster)
 	namespace := cluster.Namespace
 	spec := cluster.Spec
 	size := spec.ClusterReplicas + 1
+	if cluster.Spec.AdminSecret == nil {
+		return nil, fmt.Errorf("missing admin secret")
+	} else {
+		password = redisPassword(cluster)
+	}
+
 	ss := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            ssName,
@@ -93,12 +100,18 @@ func NewStatefulSetForCR(cluster *redisv1alpha1.DistributedRedisCluster, ssName,
 		ss.Spec.Template.Spec.InitContainers = append(ss.Spec.Template.Spec.InitContainers, initContainers...)
 	}
 
-	if cluster.IsRestoreFromBackup() && cluster.IsRestoreRunning() && cluster.Status.Restore.Backup != nil {
-		restoreInitContainer, err := redisRestoreInitContainer(cluster, password)
-		if err != nil {
-			return nil, err
-		}
-		ss.Spec.Template.Spec.InitContainers = append(ss.Spec.Template.Spec.InitContainers, restoreInitContainer)
+	//if cluster.IsRestoreFromBackup() && cluster.IsRestoreRunning() && cluster.Status.Restore.Backup != nil {
+	if cluster.IsRestoreFromBackup() && cluster.IsRestoreRunning() {
+		/*
+			restoreInitContainer, err := redisRestoreInitContainer(cluster, password)
+			if err != nil {
+				return nil, err
+			}
+			ss.Spec.Template.Spec.InitContainers = append(ss.Spec.Template.Spec.InitContainers, restoreInitContainer)
+		*/
+		//Dinesh Todo This flow Needs FIX ####, commented out below to fix status fileds
+		err := fmt.Errorf("Restore Not supported yet")
+		return nil, err
 	}
 	return ss, nil
 }
@@ -189,7 +202,7 @@ func getRedisCommand(cluster *redisv1alpha1.DistributedRedisCluster, password *c
 		"--cluster-config-file /data/nodes.conf",
 	}
 	if password != nil {
-		cmd = append(cmd, fmt.Sprintf("--requirepass '$(%s)'", redisv1alpha1.PasswordENV),
+		cmd = append(cmd, "--requirepass no",
 			fmt.Sprintf("--masterauth '$(%s)'", redisv1alpha1.PasswordENV))
 	}
 
@@ -344,86 +357,91 @@ func redisExporterContainer(cluster *redisv1alpha1.DistributedRedisCluster, pass
 }
 
 func redisRestoreInitContainer(cluster *redisv1alpha1.DistributedRedisCluster, password *corev1.EnvVar) (corev1.Container, error) {
-	backup := cluster.Status.Restore.Backup
-	backupSpec := backup.Spec.Backend
-	location, err := backupSpec.Location()
-	if err != nil {
-		return corev1.Container{}, err
-	}
-	folderName, err := backup.RemotePath()
-	if err != nil {
-		return corev1.Container{}, err
-	}
-	log.V(3).Info("restore", "namespaces", cluster.Namespace, "name", cluster.Name, "folderName", folderName)
-	container := corev1.Container{
-		Name:            redisv1alpha1.JobTypeRestore,
-		Image:           backup.Spec.Image,
-		ImagePullPolicy: corev1.PullAlways,
-		Args: []string{
-			redisv1alpha1.JobTypeRestore,
-			fmt.Sprintf(`--data-dir=%s`, redisv1alpha1.BackupDumpDir),
-			fmt.Sprintf(`--location=%s`, location),
-			fmt.Sprintf(`--folder=%s`, folderName),
-			fmt.Sprintf(`--snapshot=%s`, backup.Name),
-			"--",
-		},
-		Env: []corev1.EnvVar{
-			{
-				Name: "POD_NAME",
-				ValueFrom: &corev1.EnvVarSource{
-					FieldRef: &corev1.ObjectFieldSelector{
-						FieldPath: "metadata.name",
-					},
-				},
+	//Dinesh Todo This flow Needs FIX ####, commented out below to fix status fileds
+	err := fmt.Errorf("Restore Not supported yet")
+	return corev1.Container{}, err
+	/*
+		backup := cluster.Status.Restore.Backup
+		backupSpec := backup.Spec.Backend
+		location, err := backupSpec.Location()
+		if err != nil {
+			return corev1.Container{}, err
+		}
+		folderName, err := backup.RemotePath()
+		if err != nil {
+			return corev1.Container{}, err
+		}
+		log.V(3).Info("restore", "namespaces", cluster.Namespace, "name", cluster.Name, "folderName", folderName)
+		container := corev1.Container{
+			Name:            redisv1alpha1.JobTypeRestore,
+			Image:           backup.Spec.Image,
+			ImagePullPolicy: corev1.PullAlways,
+			Args: []string{
+				redisv1alpha1.JobTypeRestore,
+				fmt.Sprintf(`--data-dir=%s`, redisv1alpha1.BackupDumpDir),
+				fmt.Sprintf(`--location=%s`, location),
+				fmt.Sprintf(`--folder=%s`, folderName),
+				fmt.Sprintf(`--snapshot=%s`, backup.Name),
+				"--",
 			},
-			{
-				Name: "REDIS_RESTORE_SUCCEEDED",
-				ValueFrom: &corev1.EnvVarSource{
-					ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: configmaps.RestoreConfigMapName(cluster.Name),
+			Env: []corev1.EnvVar{
+				{
+					Name: "POD_NAME",
+					ValueFrom: &corev1.EnvVarSource{
+						FieldRef: &corev1.ObjectFieldSelector{
+							FieldPath: "metadata.name",
 						},
-						Key: configmaps.RestoreSucceeded,
+					},
+				},
+				{
+					Name: "REDIS_RESTORE_SUCCEEDED",
+					ValueFrom: &corev1.EnvVarSource{
+						ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: configmaps.RestoreConfigMapName(cluster.Name),
+							},
+							Key: configmaps.RestoreSucceeded,
+						},
 					},
 				},
 			},
-		},
-		VolumeMounts: []corev1.VolumeMount{
-			{
-				Name:      redisStorageVolumeName,
-				MountPath: redisv1alpha1.BackupDumpDir,
+			VolumeMounts: []corev1.VolumeMount{
+				{
+					Name:      redisStorageVolumeName,
+					MountPath: redisv1alpha1.BackupDumpDir,
+				},
+				{
+					Name:      "rcloneconfig",
+					ReadOnly:  true,
+					MountPath: osm.SecretMountPath,
+				},
 			},
-			{
-				Name:      "rcloneconfig",
+		}
+
+		if backup.IsRefLocalPVC() {
+			container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
+				Name:      redisRestoreLocalVolumeName,
+				MountPath: backup.Spec.Backend.Local.MountPath,
+				SubPath:   backup.Spec.Backend.Local.SubPath,
 				ReadOnly:  true,
-				MountPath: osm.SecretMountPath,
-			},
-		},
-	}
+			})
+		}
 
-	if backup.IsRefLocalPVC() {
-		container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
-			Name:      redisRestoreLocalVolumeName,
-			MountPath: backup.Spec.Backend.Local.MountPath,
-			SubPath:   backup.Spec.Backend.Local.SubPath,
-			ReadOnly:  true,
-		})
-	}
+		if password != nil {
+			container.Env = append(container.Env, *password)
+		}
 
-	if password != nil {
-		container.Env = append(container.Env, *password)
-	}
+		if backup.Spec.PodSpec != nil {
+			container.Resources = backup.Spec.PodSpec.Resources
+			container.LivenessProbe = backup.Spec.PodSpec.LivenessProbe
+			container.ReadinessProbe = backup.Spec.PodSpec.ReadinessProbe
+			container.Lifecycle = backup.Spec.PodSpec.Lifecycle
+		}
 
-	if backup.Spec.PodSpec != nil {
-		container.Resources = backup.Spec.PodSpec.Resources
-		container.LivenessProbe = backup.Spec.PodSpec.LivenessProbe
-		container.ReadinessProbe = backup.Spec.PodSpec.ReadinessProbe
-		container.Lifecycle = backup.Spec.PodSpec.Lifecycle
-	}
+		container.Env = customContainerEnv(container.Env, cluster.Spec.Env)
 
-	container.Env = customContainerEnv(container.Env, cluster.Spec.Env)
-
-	return container, nil
+		return container, nil
+	*/
 }
 
 func getInitContainersWithRedisEnv(cluster *redisv1alpha1.DistributedRedisCluster, password *corev1.EnvVar) []corev1.Container {
@@ -462,15 +480,17 @@ func volumeMounts() []corev1.VolumeMount {
 			Name:      configMapVolumeName,
 			MountPath: "/conf",
 		},
+		{
+			Name:      aclConfigMapVolName,
+			MountPath: "/acl",
+		},
 	}
 }
 
 // Returns the REDIS_PASSWORD environment variable.
 func redisPassword(cluster *redisv1alpha1.DistributedRedisCluster) *corev1.EnvVar {
-	if cluster.Spec.PasswordSecret == nil {
-		return nil
-	}
-	secretName := cluster.Spec.PasswordSecret.Name
+
+	secretName := cluster.Spec.AdminSecret.Name
 
 	return &corev1.EnvVar{
 		Name: redisv1alpha1.PasswordENV,
@@ -499,6 +519,17 @@ func redisVolumes(cluster *redisv1alpha1.DistributedRedisCluster) []corev1.Volum
 				},
 			},
 		},
+		{
+			Name: aclConfigMapVolName,
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: configmaps.AclConfigMapName(cluster.Name),
+					},
+					DefaultMode: &executeMode,
+				},
+			},
+		},
 	}
 
 	dataVolume := redisDataVolume(cluster)
@@ -507,27 +538,29 @@ func redisVolumes(cluster *redisv1alpha1.DistributedRedisCluster) []corev1.Volum
 	}
 
 	if !cluster.IsRestoreFromBackup() ||
-		cluster.Status.Restore.Backup == nil ||
+		//Dinesh Todo This flow Needs FIX ####, commented out below to fix status fileds
+		//cluster.Status.Restore.Backup == nil ||
 		!cluster.IsRestoreRunning() {
 		return volumes
 	}
-
-	volumes = append(volumes, corev1.Volume{
-		Name: "rcloneconfig",
-		VolumeSource: corev1.VolumeSource{
-			Secret: &corev1.SecretVolumeSource{
-				SecretName: cluster.Status.Restore.Backup.RCloneSecretName(),
-			},
-		},
-	})
-
-	if cluster.Status.Restore.Backup.IsRefLocalPVC() {
+	//Dinesh Todo This flow Needs FIX ####, commented out below to fix status fileds
+	/*
 		volumes = append(volumes, corev1.Volume{
-			Name:         redisRestoreLocalVolumeName,
-			VolumeSource: cluster.Status.Restore.Backup.Spec.Local.VolumeSource,
+			Name: "rcloneconfig",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: cluster.Status.Restore.Backup.RCloneSecretName(),
+				},
+			},
 		})
-	}
 
+			if cluster.Status.Restore.Backup.IsRefLocalPVC() {
+				volumes = append(volumes, corev1.Volume{
+					Name:         redisRestoreLocalVolumeName,
+					VolumeSource: cluster.Status.Restore.Backup.Spec.Local.VolumeSource,
+				})
+			}
+	*/
 	return volumes
 }
 

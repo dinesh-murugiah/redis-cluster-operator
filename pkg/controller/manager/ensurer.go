@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -10,7 +11,6 @@ import (
 
 	redisv1alpha1 "github.com/ucloud/redis-cluster-operator/pkg/apis/redis/v1alpha1"
 	"github.com/ucloud/redis-cluster-operator/pkg/k8sutil"
-	"github.com/ucloud/redis-cluster-operator/pkg/osm"
 	"github.com/ucloud/redis-cluster-operator/pkg/resources/configmaps"
 	"github.com/ucloud/redis-cluster-operator/pkg/resources/poddisruptionbudgets"
 	"github.com/ucloud/redis-cluster-operator/pkg/resources/services"
@@ -21,7 +21,7 @@ type IEnsureResource interface {
 	EnsureRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) (bool, error)
 	EnsureRedisHeadLessSvcs(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
 	EnsureRedisSvc(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
-	EnsureRedisConfigMap(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
+	EnsureRedisConfigMap(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) (error, bool)
 	EnsureRedisRCloneSecret(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
 	UpdateRedisStatefulsets(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error
 }
@@ -101,11 +101,11 @@ func shouldUpdateRedis(cluster *redisv1alpha1.DistributedRedisCluster, sts *apps
 	if cluster.Spec.Image != sts.Spec.Template.Spec.Containers[0].Image {
 		return true
 	}
-
+	/* // TODO FIX it by adding a new user for probes
 	if statefulsets.IsPasswordChanged(cluster, sts) {
 		return true
 	}
-
+	*/
 	expectResource := cluster.Spec.Resources
 	currentResource := sts.Spec.Template.Spec.Containers[0].Resources
 	if result := expectResource.Requests.Memory().Cmp(*currentResource.Requests.Memory()); result != 0 {
@@ -189,7 +189,8 @@ func (r *realEnsureResource) EnsureRedisSvc(cluster *redisv1alpha1.DistributedRe
 	return err
 }
 
-func (r *realEnsureResource) EnsureRedisConfigMap(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error {
+func (r *realEnsureResource) EnsureRedisConfigMap(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) (error, bool) {
+
 	cmName := configmaps.RedisConfigMapName(cluster.Name)
 	drcCm, err := r.configMapClient.GetConfigMap(cluster.Namespace, cmName)
 	if err != nil {
@@ -197,18 +198,50 @@ func (r *realEnsureResource) EnsureRedisConfigMap(cluster *redisv1alpha1.Distrib
 			r.logger.WithValues("ConfigMap.Namespace", cluster.Namespace, "ConfigMap.Name", cmName).
 				Info("creating a new configMap")
 			cm := configmaps.NewConfigMapForCR(cluster, labels)
+
 			if err2 := r.configMapClient.CreateConfigMap(cm); err2 != nil {
-				return err2
+				return err2, false
 			}
+
 		} else {
-			return err
+			return err, false
 		}
 	} else {
 		if isRedisConfChanged(drcCm.Data[configmaps.RedisConfKey], cluster.Spec.Config, r.logger) {
 			cm := configmaps.NewConfigMapForCR(cluster, labels)
 			if err2 := r.configMapClient.UpdateConfigMap(cm); err2 != nil {
-				return err2
+				return err2, false
 			}
+		}
+	}
+	aclcmName := configmaps.AclConfigMapName(cluster.Name)
+	_, err2 := r.configMapClient.GetConfigMap(cluster.Namespace, aclcmName)
+	if err2 != nil {
+		if errors.IsNotFound(err) {
+			r.logger.WithValues("ConfigMap.Namespace", cluster.Namespace, "ConfigMap.Name", cmName).
+				Info("creating a new ACL configMap")
+			aclcm, _, conferr, abortcr := configmaps.NewACLConfigMap(r.logger, r.client, cluster, labels)
+			if conferr != nil {
+				if abortcr {
+					return conferr, true
+				} else {
+					return conferr, false
+				}
+
+			}
+			if err3 := r.configMapClient.CreateConfigMap(aclcm); err3 != nil {
+				return err3, false
+			}
+
+			/*
+				cluster.Status.SecretsVer = make(map[string]string)
+				for key, value := range secretVersions {
+					cluster.Status.SecretsVer[key] = value
+				}
+			*/
+
+		} else {
+			return err2, false
 		}
 	}
 
@@ -220,31 +253,42 @@ func (r *realEnsureResource) EnsureRedisConfigMap(cluster *redisv1alpha1.Distrib
 				r.logger.WithValues("ConfigMap.Namespace", cluster.Namespace, "ConfigMap.Name", restoreCmName).
 					Info("creating a new restore configMap")
 				cm := configmaps.NewConfigMapForRestore(cluster, labels)
-				return r.configMapClient.CreateConfigMap(cm)
+				if err1 := r.configMapClient.CreateConfigMap(cm); err1 != nil {
+					return err1, false
+				}
+			} else {
+				return err, false
 			}
-			return err
 		}
 		if cluster.Status.Restore.Phase == redisv1alpha1.RestorePhaseRestart && restoreCm.Data[configmaps.RestoreSucceeded] == "0" {
 			cm := configmaps.NewConfigMapForRestore(cluster, labels)
-			return r.configMapClient.UpdateConfigMap(cm)
+			err := r.configMapClient.UpdateConfigMap(cm)
+			if err != nil {
+				return err, false
+			}
 		}
 	}
-	return nil
+	return nil, false
 }
 
 func (r *realEnsureResource) EnsureRedisRCloneSecret(cluster *redisv1alpha1.DistributedRedisCluster, labels map[string]string) error {
 	if !cluster.IsRestoreFromBackup() || cluster.IsRestored() {
 		return nil
 	}
-	backup := cluster.Status.Restore.Backup
-	secret, err := osm.NewRcloneSecret(r.client, backup.RCloneSecretName(), cluster.Namespace, backup.Spec.Backend, redisv1alpha1.DefaultOwnerReferences(cluster))
-	if err != nil {
-		return err
-	}
-	if err := k8sutil.CreateSecret(r.client, secret, r.logger); err != nil {
-		return err
-	}
-	return nil
+	//Dinesh Todo This flow Needs FIX ####, commented out below to fix status fileds
+	err := fmt.Errorf("Restore Not supported yet")
+	return err
+	/*
+		backup := cluster.Status.Restore.Backup
+		secret, err := osm.NewRcloneSecret(r.client, backup.RCloneSecretName(), cluster.Namespace, backup.Spec.Backend, redisv1alpha1.DefaultOwnerReferences(cluster))
+		if err != nil {
+			return err
+		}
+		if err := k8sutil.CreateSecret(r.client, secret, r.logger); err != nil {
+			return err
+		}
+		return nil
+	*/
 }
 
 func isRedisConfChanged(confInCm string, currentConf map[string]string, log logr.Logger) bool {

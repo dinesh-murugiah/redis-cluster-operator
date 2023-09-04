@@ -58,7 +58,7 @@ func NewClient(addr, password string, cnxTimeout time.Duration, commandsMapping 
 		return c, err
 	}
 	if password != "" {
-		err = c.client.Cmd("AUTH", password).Err
+		err = c.client.Cmd("AUTH", "admin", password).Err
 	}
 	return c, err
 }

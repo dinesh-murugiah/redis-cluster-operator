@@ -26,18 +26,20 @@ type DistributedRedisClusterSpec struct {
 	ServiceName      string                        `json:"serviceName,omitempty"`
 	Config           map[string]string             `json:"config,omitempty"`
 	// Set RequiredAntiAffinity to force the master-slave node anti-affinity.
-	RequiredAntiAffinity     bool                         `json:"requiredAntiAffinity,omitempty"`
-	Affinity                 *corev1.Affinity             `json:"affinity,omitempty"`
-	NodeSelector             map[string]string            `json:"nodeSelector,omitempty"`
-	ToleRations              []corev1.Toleration          `json:"toleRations,omitempty"`
-	SecurityContext          *corev1.PodSecurityContext   `json:"securityContext,omitempty"`
-	ContainerSecurityContext *corev1.SecurityContext      `json:"containerSecurityContext,omitempty"`
-	Annotations              map[string]string            `json:"annotations,omitempty"`
-	Storage                  *RedisStorage                `json:"storage,omitempty"`
-	Resources                *corev1.ResourceRequirements `json:"resources,omitempty"`
-	PasswordSecret           *corev1.LocalObjectReference `json:"passwordSecret,omitempty"`
-	Monitor                  *AgentSpec                   `json:"monitor,omitempty"`
-	Restore                  *RestoreSpec                 `json:"restoreContainer,omitempty"`
+	RequiredAntiAffinity     bool                          `json:"requiredAntiAffinity,omitempty"`
+	Affinity                 *corev1.Affinity              `json:"affinity,omitempty"`
+	NodeSelector             map[string]string             `json:"nodeSelector,omitempty"`
+	ToleRations              []corev1.Toleration           `json:"toleRations,omitempty"`
+	SecurityContext          *corev1.PodSecurityContext    `json:"securityContext,omitempty"`
+	ContainerSecurityContext *corev1.SecurityContext       `json:"containerSecurityContext,omitempty"`
+	Annotations              map[string]string             `json:"annotations,omitempty"`
+	Storage                  *RedisStorage                 `json:"storage,omitempty"`
+	Resources                *corev1.ResourceRequirements  `json:"resources,omitempty"`
+	AdminSecret              *corev1.LocalObjectReference  `json:"adminUser,omitempty"`
+	DefaultSecret            *corev1.LocalObjectReference  `json:"defaultUser,omitempty"`
+	AdditionalSecret         []corev1.LocalObjectReference `json:"additionalUsers,omitempty"`
+	Monitor                  *AgentSpec                    `json:"monitor,omitempty"`
+	Restore                  *RestoreSpec                  `json:"restoreContainer,omitempty"`
 }
 
 type AgentSpec struct {
@@ -112,19 +114,20 @@ type DistributedRedisClusterStatus struct {
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
 	Status               ClusterStatus      `json:"status"`
+	SecretStatus         string             `json:"secretstatus"`
+	SecretsVer           map[string]string  `json:"secretverisons"`
 	Reason               string             `json:"reason,omitempty"`
 	NumberOfMaster       int32              `json:"numberOfMaster,omitempty"`
 	MinReplicationFactor int32              `json:"minReplicationFactor,omitempty"`
 	MaxReplicationFactor int32              `json:"maxReplicationFactor,omitempty"`
-	NodesPlacement       NodesPlacementInfo `json:"nodesPlacementInfo,omitempty"`
 	Nodes                []RedisClusterNode `json:"nodes"`
 	// +optional
-	Restore Restore `json:"restore"`
+	Restore Restore `json:"restore,omitempty"`
 }
 
 type Restore struct {
-	Phase  RestorePhase        `json:"phase,omitempty"`
-	Backup *RedisClusterBackup `json:"backup, omitempty"`
+	Phase RestorePhase `json:"phase,omitempty"`
+	//Backup *RedisClusterBackup `json:"backup, omitempty"`
 }
 
 // RedisClusterNode represent a RedisCluster Node

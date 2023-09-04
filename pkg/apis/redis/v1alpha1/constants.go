@@ -49,10 +49,18 @@ const (
 	ClusterStatusResetPassword ClusterStatus = "ResetPassword"
 )
 
+type AclStatus string
+
+const (
+	AclStatusCreated AclStatus = "AclConfCreated"
+	AclStatusUpdated AclStatus = "AclConfUpdated"
+)
+
 // NodesPlacementInfo Redis Nodes placement mode information
 type NodesPlacementInfo string
 
 const (
+
 	// NodesPlacementInfoBestEffort the cluster nodes placement is in best effort,
 	// it means you can have 2 masters (or more) on the same VM.
 	NodesPlacementInfoBestEffort NodesPlacementInfo = "BestEffort"

@@ -130,7 +130,7 @@ func (c *Ctx) DispatchSlotToNewMasters(admin redisutil.IAdmin, newMasterNodes, c
 
 func (c *Ctx) feedMigInfo(newMasterNodes, oldMasterNodes, allMasterNodes redisutil.Nodes, nbSlots int) (mapOut mapSlotByMigInfo, info redisutil.ClusterActionsInfo) {
 	mapOut = make(mapSlotByMigInfo)
-	mapSlotToUpdate := c.buildSlotsByNode(newMasterNodes, oldMasterNodes, allMasterNodes, nbSlots)
+	mapSlotToUpdate := c.BuildSlotsByNode(newMasterNodes, oldMasterNodes, allMasterNodes, nbSlots)
 
 	for id, slots := range mapSlotToUpdate {
 		for _, s := range slots {
@@ -175,7 +175,7 @@ func (c *Ctx) feedMigInfo(newMasterNodes, oldMasterNodes, allMasterNodes redisut
 
 // buildSlotsByNode get all slots that have to be migrated with retrieveSlotToMigrateFrom and retrieveSlotToMigrateFromRemovedNodes
 // and assign those slots to node that need them
-func (c *Ctx) buildSlotsByNode(newMasterNodes, oldMasterNodes, allMasterNodes redisutil.Nodes, nbSlots int) map[string][]redisutil.Slot {
+func (c *Ctx) BuildSlotsByNode(newMasterNodes, oldMasterNodes, allMasterNodes redisutil.Nodes, nbSlots int) map[string][]redisutil.Slot {
 	var nbNode = len(newMasterNodes)
 	if nbNode == 0 {
 		return make(map[string][]redisutil.Slot)

@@ -77,7 +77,7 @@ func NewDistributedRedisCluster(name, namespace, image, passwordName string, mas
 			ClusterReplicas: clusterReplicas,
 			Command:         []string{},
 			Config:          configParams,
-			PasswordSecret:  &corev1.LocalObjectReference{Name: passwordName},
+			AdminSecret:     &corev1.LocalObjectReference{Name: passwordName},
 			Resources: &corev1.ResourceRequirements{
 				Requests: corev1.ResourceList{
 					corev1.ResourceCPU:    resource.MustParse("1"),
@@ -224,12 +224,12 @@ func NewRedisAdmin(pods []corev1.Pod, password string, cfg *config.Redis, reqLog
 }
 
 func getClusterPassword(client client.Client, cluster *redisv1alpha1.DistributedRedisCluster) (string, error) {
-	if cluster.Spec.PasswordSecret == nil {
+	if cluster.Spec.AdminSecret == nil {
 		return "", nil
 	}
 	secret := &corev1.Secret{}
 	err := client.Get(context.TODO(), types.NamespacedName{
-		Name:      cluster.Spec.PasswordSecret.Name,
+		Name:      cluster.Spec.AdminSecret.Name,
 		Namespace: cluster.Namespace,
 	}, secret)
 	if err != nil {
@@ -252,7 +252,7 @@ func ScaleUPDown(drc *redisv1alpha1.DistributedRedisCluster) {
 }
 
 func ResetPassword(drc *redisv1alpha1.DistributedRedisCluster, passwordSecret string) {
-	drc.Spec.PasswordSecret = &corev1.LocalObjectReference{Name: passwordSecret}
+	drc.Spec.AdminSecret = &corev1.LocalObjectReference{Name: passwordSecret}
 }
 
 func RollingUpdateDRC(drc *redisv1alpha1.DistributedRedisCluster) {
@@ -274,7 +274,7 @@ func RestoreDRC(drc *redisv1alpha1.DistributedRedisCluster, drcb *redisv1alpha1.
 			MasterSize:      drc.Spec.MasterSize,
 			ClusterReplicas: drc.Spec.ClusterReplicas,
 			Config:          drc.Spec.Config,
-			PasswordSecret:  drc.Spec.PasswordSecret,
+			AdminSecret:     drc.Spec.AdminSecret,
 			Resources:       drc.Spec.Resources,
 			Storage:         drc.Spec.Storage,
 			Monitor:         drc.Spec.Monitor,

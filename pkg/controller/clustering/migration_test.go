@@ -238,7 +238,7 @@ func Test_buildSlotsByNode(t *testing.T) {
 			continue
 		}
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildSlotsByNode(tt.args.newMasterNodes, tt.args.oldMasterNodes, tt.args.allMasterNodes, tt.args.nbSlots)
+			got := BuildSlotsByNode(tt.args.newMasterNodes, tt.args.oldMasterNodes, tt.args.allMasterNodes, tt.args.nbSlots)
 			gotSlotByNodeID := make(map[string]int)
 			for id, slots := range got {
 				t.Logf("id:%s, len:%d, slots:%d\n", id, len(slots), slots)

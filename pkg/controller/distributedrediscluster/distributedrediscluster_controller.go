@@ -29,6 +29,7 @@ import (
 	"github.com/ucloud/redis-cluster-operator/pkg/exec"
 	"github.com/ucloud/redis-cluster-operator/pkg/k8sutil"
 	"github.com/ucloud/redis-cluster-operator/pkg/redisutil"
+	"github.com/ucloud/redis-cluster-operator/pkg/resources/configmaps"
 	"github.com/ucloud/redis-cluster-operator/pkg/resources/statefulsets"
 	"github.com/ucloud/redis-cluster-operator/pkg/utils"
 )
@@ -84,7 +85,7 @@ func newReconciler(mgr manager.Manager, execer exec.IExec) reconcile.Reconciler 
 	reconiler.pvcController = k8sutil.NewPvcController(reconiler.client)
 	reconiler.crController = k8sutil.NewCRControl(reconiler.client)
 	reconiler.ensurer = clustermanger.NewEnsureResource(reconiler.client, log)
-	reconiler.checker = clustermanger.NewCheck(reconiler.client)
+	reconiler.checker = clustermanger.NewCheck(reconiler.client, log)
 	reconiler.execer = execer
 	return reconiler
 }
@@ -198,6 +199,24 @@ func (r *ReconcileDistributedRedisCluster) Reconcile(request reconcile.Request) 
 		SetClusterScaling(newStatus, err.Error())
 		r.updateClusterIfNeed(instance, newStatus, reqLogger)
 		return reconcile.Result{RequeueAfter: requeueAfter}, nil
+	} else {
+		if instance.Status.SecretStatus == "" {
+			var newStatus *redisv1alpha1.DistributedRedisClusterStatus
+			secretVersions, err := configmaps.Getsecretversions(reqLogger, r.client, instance)
+			if err != nil {
+				newStatus = instance.Status.DeepCopy()
+				SetSecretStatus(newStatus, "aclconferror")
+			} else {
+				newStatus = instance.Status.DeepCopy()
+				SetSecretStatus(newStatus, "aclconfdone")
+				newStatus.SecretsVer = make(map[string]string)
+				for key, value := range secretVersions {
+					newStatus.SecretsVer[key] = value
+				}
+			}
+
+			r.updateClusterIfNeed(instance, newStatus, reqLogger)
+		}
 	}
 
 	matchLabels := getLabels(instance)
@@ -227,11 +246,30 @@ func (r *ReconcileDistributedRedisCluster) Reconcile(request reconcile.Request) 
 		return reconcile.Result{RequeueAfter: requeueAfter}, nil
 	}
 
-	password, err := statefulsets.GetClusterPassword(r.client, instance)
+	err, secretver := r.checkandUpadtePassword(r.client, ctx)
+	newsecretStatus := instance.Status.DeepCopy()
+	if err != nil {
+		reqLogger.WithValues("err", err).Info("error checking / updating password")
+		SetSecretStatus(newsecretStatus, "ACLupdateERR")
+	}
+	if secretver != nil {
+		SetSecretStatus(newsecretStatus, "ACLupdateSuccess")
+		newsecretStatus.SecretsVer = make(map[string]string)
+		for key, value := range secretver {
+			newsecretStatus.SecretsVer[key] = value
+		}
+	} else {
+		if err == nil {
+			SetSecretStatus(newsecretStatus, "ACLintact")
+		}
+	}
+	r.updateClusterIfNeed(instance, newsecretStatus, reqLogger)
+
+	password, err := statefulsets.GetRedisClusterAdminPassword(r.client, ctx.cluster, reqLogger)
 	if err != nil {
 		return reconcile.Result{}, Kubernetes.Wrap(err, "getClusterPassword")
 	}
-
+	//reqLogger.WithValues("adminpassword:", password).Info("please check adminpass")
 	admin, err := newRedisAdmin(ctx.pods, password, config.RedisConf(), reqLogger)
 	if err != nil {
 		return reconcile.Result{}, Redis.Wrap(err, "newRedisAdmin")
@@ -302,10 +340,13 @@ func (r *ReconcileDistributedRedisCluster) Reconcile(request reconcile.Request) 
 		}
 		// set ClusterReplicas = Backup.Status.ClusterReplicas,
 		// next Reconcile loop the statefulSet's replicas will increase by ClusterReplicas, then start the slave node
-		instance.Spec.ClusterReplicas = instance.Status.Restore.Backup.Status.ClusterReplicas
-		if err := r.crController.UpdateCR(instance); err != nil {
-			return reconcile.Result{}, err
-		}
+		//Dinesh Todo This flow Needs FIX ####, commented out below to fix status fileds
+		/*
+			instance.Spec.ClusterReplicas = instance.Status.Restore.Backup.Status.ClusterReplicas
+			if err := r.crController.UpdateCR(instance); err != nil {
+				return reconcile.Result{}, err
+			}
+		*/
 		return reconcile.Result{}, nil
 	}
 

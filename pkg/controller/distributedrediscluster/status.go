@@ -38,6 +38,10 @@ func SetClusterUpdating(status *redisv1alpha1.DistributedRedisClusterStatus, rea
 	status.Reason = reason
 }
 
+func SetSecretStatus(status *redisv1alpha1.DistributedRedisClusterStatus, secretstate string) {
+	status.SecretStatus = secretstate
+}
+
 func SetClusterResetPassword(status *redisv1alpha1.DistributedRedisClusterStatus, reason string) {
 	status.Status = redisv1alpha1.ClusterStatusResetPassword
 	status.Reason = reason
@@ -47,9 +51,11 @@ func buildClusterStatus(clusterInfos *redisutil.ClusterInfos, pods []*corev1.Pod
 	cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger) *redisv1alpha1.DistributedRedisClusterStatus {
 	oldStatus := cluster.Status
 	status := &redisv1alpha1.DistributedRedisClusterStatus{
-		Status:  oldStatus.Status,
-		Reason:  oldStatus.Reason,
-		Restore: oldStatus.Restore,
+		Status:       oldStatus.Status,
+		Reason:       oldStatus.Reason,
+		SecretStatus: oldStatus.SecretStatus,
+		SecretsVer:   oldStatus.SecretsVer,
+		Restore:      oldStatus.Restore,
 	}
 
 	nbMaster := int32(0)
@@ -134,6 +140,16 @@ func (r *ReconcileDistributedRedisCluster) updateClusterIfNeed(cluster *redisv1a
 
 func compareStatus(old, new *redisv1alpha1.DistributedRedisClusterStatus, reqLogger logr.Logger) bool {
 	if utils.CompareStringValue("ClusterStatus", string(old.Status), string(new.Status), reqLogger) {
+		return true
+	}
+
+	if utils.CompareStringValue("SecretStatus", string(old.SecretStatus), string(new.SecretStatus), reqLogger) {
+		return true
+	}
+
+	if old.SecretsVer == nil {
+		return true
+	} else if len(old.SecretsVer) == 0 {
 		return true
 	}
 

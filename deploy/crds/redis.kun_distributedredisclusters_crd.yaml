@@ -33,6 +33,26 @@ spec:
             description: DistributedRedisClusterSpec defines the desired state of
               DistributedRedisCluster
             properties:
+              additionalUsers:
+                items:
+                  description: LocalObjectReference contains enough information to
+                    let you locate the referenced object inside the same namespace.
+                  properties:
+                    name:
+                      description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        TODO: Add other useful fields. apiVersion, kind, uid?'
+                      type: string
+                  type: object
+                type: array
+              adminUser:
+                description: LocalObjectReference contains enough information to let
+                  you locate the referenced object inside the same namespace.
+                properties:
+                  name:
+                    description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                      TODO: Add other useful fields. apiVersion, kind, uid?'
+                    type: string
+                type: object
               affinity:
                 description: Affinity is a group of affinity scheduling rules.
                 properties:
@@ -757,6 +777,15 @@ spec:
                           value specified in SecurityContext takes precedence.
                         type: string
                     type: object
+                type: object
+              defaultUser:
+                description: LocalObjectReference contains enough information to let
+                  you locate the referenced object inside the same namespace.
+                properties:
+                  name:
+                    description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                      TODO: Add other useful fields. apiVersion, kind, uid?'
+                    type: string
                 type: object
               env:
                 items:
@@ -2246,15 +2275,6 @@ spec:
                 additionalProperties:
                   type: string
                 type: object
-              passwordSecret:
-                description: LocalObjectReference contains enough information to let
-                  you locate the referenced object inside the same namespace.
-                properties:
-                  name:
-                    description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                      TODO: Add other useful fields. apiVersion, kind, uid?'
-                    type: string
-                type: object
               requiredAntiAffinity:
                 description: Set RequiredAntiAffinity to force the master-slave node
                   anti-affinity.
@@ -2536,14 +2556,22 @@ spec:
                   - statefulSet
                   type: object
                 type: array
-              nodesPlacementInfo:
-                description: NodesPlacementInfo Redis Nodes placement mode information
-                type: string
               numberOfMaster:
                 format: int32
                 type: integer
               reason:
                 type: string
+              restore:
+                properties:
+                  phase:
+                    type: string
+                type: object
+              secretstatus:
+                type: string
+              secretverisons:
+                additionalProperties:
+                  type: string
+                type: object
               status:
                 description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
                   of cluster Important: Run "operator-sdk generate k8s" to regenerate
@@ -2552,6 +2580,8 @@ spec:
                 type: string
             required:
             - nodes
+            - secretstatus
+            - secretverisons
             - status
             type: object
         type: object

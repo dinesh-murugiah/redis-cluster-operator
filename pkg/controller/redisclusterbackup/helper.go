@@ -80,7 +80,7 @@ func upsertEnvVars(vars []corev1.EnvVar, nv ...corev1.EnvVar) []corev1.EnvVar {
 
 // Returns the REDIS_PASSWORD environment variable.
 func redisPassword(cluster *redisv1alpha1.DistributedRedisCluster) corev1.EnvVar {
-	secretName := cluster.Spec.PasswordSecret.Name
+	secretName := cluster.Spec.AdminSecret.Name
 	return corev1.EnvVar{
 		Name: "REDIS_PASSWORD",
 		ValueFrom: &corev1.EnvVarSource{

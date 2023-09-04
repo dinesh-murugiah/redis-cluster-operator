@@ -355,8 +355,10 @@ func (r *ReconcileRedisClusterBackup) backupContainers(backup *redisv1alpha1.Red
 					},
 				},
 			}
-			if cluster.Spec.PasswordSecret != nil {
+			if cluster.Spec.AdminSecret != nil {
 				container.Env = append(container.Env, redisPassword(cluster))
+			} else {
+				return nil, fmt.Errorf("missing admin secret for cluster")
 			}
 			if backup.Spec.Backend.Local != nil {
 				container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
@@ -511,6 +513,7 @@ func (r *ReconcileRedisClusterBackup) handleBackupJob(reqLogger logr.Logger, bac
 				jobSucceeded := jobType == batchv1.JobComplete
 				if jobSucceeded {
 					backup.Status.Phase = redisv1alpha1.BackupPhaseSucceeded
+					backup.Status.Reason = "NA"
 				} else {
 					backup.Status.Phase = redisv1alpha1.BackupPhaseFailed
 					backup.Status.Reason = "run batch job failed"

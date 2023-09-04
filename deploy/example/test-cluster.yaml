@@ -4,11 +4,41 @@ metadata:
   annotations:
     # if your operator run as cluster-scoped, add this annotations
     redis.kun/scope: cluster-scoped
-  name: mysecret
+  name: defaultsecret
 type: Opaque
 stringData:
-  password: pass
+  acl: ~* +@all
+  password: testpwd
+  username: default
 ---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  annotations:
+    # if your operator run as cluster-scoped, add this annotations
+    redis.kun/scope: cluster-scoped
+  name: user1
+type: Opaque
+stringData:
+  acl: ~* +@all
+  password: dinesh@123
+  username: dinesh
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  annotations:
+    # if your operator run as cluster-scoped, add this annotations
+    redis.kun/scope: cluster-scoped
+  name: user2
+type: Opaque
+stringData:
+  acl: ~* +@all
+  password: samuel@123
+  username: samuel
+---
+
 
 apiVersion: redis.kun/v1alpha1
 kind: DistributedRedisCluster
@@ -24,8 +54,11 @@ spec:
     imagePullPolicy: IfNotPresent
   masterSize: 3
   clusterReplicas: 1
-  passwordSecret:
-    name: mysecret
+  defaultUser:
+    name: defaultsecret
+  additionalUsers:
+    - name: user1
+    - name: user2
   image: redis:6.2.12
   resources:
     limits:

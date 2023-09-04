@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	redisv1alpha1 "github.com/ucloud/redis-cluster-operator/pkg/apis/redis/v1alpha1"
 	"github.com/ucloud/redis-cluster-operator/pkg/config"
@@ -43,12 +44,12 @@ func (r *ReconcileDistributedRedisCluster) ensureCluster(ctx *syncContext) error
 	// "appendonly no" force here when do restore.
 	dbLoadedFromDiskWhenRestore(cluster, ctx.reqLogger)
 	labels := getLabels(cluster)
-	if err := r.ensurer.EnsureRedisConfigMap(cluster, labels); err != nil {
-		return Kubernetes.Wrap(err, "EnsureRedisConfigMap")
-	}
-
-	if err := r.resetClusterPassword(ctx); err != nil {
-		return Cluster.Wrap(err, "ResetPassword")
+	if err, crdeferr := r.ensurer.EnsureRedisConfigMap(cluster, labels); err != nil {
+		if crdeferr {
+			return StopRetry.Wrap(err, "AdminSecretMissing")
+		} else {
+			return Kubernetes.Wrap(err, "EnsureRedisConfigMap")
+		}
 	}
 
 	if updated, err := r.ensurer.EnsureRedisStatefulsets(cluster, labels); err != nil {
@@ -100,10 +101,16 @@ func (r *ReconcileDistributedRedisCluster) validateAndSetDefault(cluster *redisv
 	var err error
 
 	if cluster.IsRestoreFromBackup() && cluster.ShouldInitRestorePhase() {
-		update, err = r.initRestore(cluster, reqLogger)
-		if err != nil {
-			return err
-		}
+		//Dinesh Todo This flow Needs FIX ####, commented out below to fix status fileds
+		err = fmt.Errorf("Restore Not supported yet")
+		return err
+		/*
+			reqLogger.Error("force appendonly = no when do restore")
+			update, err = r.initRestore(cluster, reqLogger)
+			if err != nil {
+				return err
+			}
+		*/
 	}
 
 	if cluster.IsRestoreFromBackup() && (cluster.IsRestoreRunning() || cluster.IsRestoreRestarting()) {
@@ -130,33 +137,35 @@ func dbLoadedFromDiskWhenRestore(cluster *redisv1alpha1.DistributedRedisCluster,
 
 func (r *ReconcileDistributedRedisCluster) initRestore(cluster *redisv1alpha1.DistributedRedisCluster, reqLogger logr.Logger) (bool, error) {
 	update := false
-	if cluster.Status.Restore.Backup == nil {
-		initSpec := cluster.Spec.Restore
-		backup, err := r.crController.GetRedisClusterBackup(initSpec.BackupSource.Namespace, initSpec.BackupSource.Name)
-		if err != nil {
-			reqLogger.Error(err, "GetRedisClusterBackup")
-			return update, err
+	//Dinesh Todo This flow Needs FIX ####, commented out below to fix status fileds
+	/*
+		if cluster.Status.Restore.Backup == nil {
+			initSpec := cluster.Spec.Restore
+			backup, err := r.crController.GetRedisClusterBackup(initSpec.BackupSource.Namespace, initSpec.BackupSource.Name)
+			if err != nil {
+				reqLogger.Error(err, "GetRedisClusterBackup")
+				return update, err
+			}
+			if backup.Status.Phase != redisv1alpha1.BackupPhaseSucceeded {
+				reqLogger.Error(nil, "backup is still running")
+				return update, fmt.Errorf("backup is still running")
+			}
+			cluster.Status.Restore.Backup = backup
+			cluster.Status.Restore.Phase = redisv1alpha1.RestorePhaseRunning
+			if err := r.crController.UpdateCRStatus(cluster); err != nil {
+				return update, err
+			}
 		}
-		if backup.Status.Phase != redisv1alpha1.BackupPhaseSucceeded {
-			reqLogger.Error(nil, "backup is still running")
-			return update, fmt.Errorf("backup is still running")
+		backup := cluster.Status.Restore.Backup
+		if cluster.Spec.Image == "" {
+			cluster.Spec.Image = backup.Status.ClusterImage
+			update = true
 		}
-		cluster.Status.Restore.Backup = backup
-		cluster.Status.Restore.Phase = redisv1alpha1.RestorePhaseRunning
-		if err := r.crController.UpdateCRStatus(cluster); err != nil {
-			return update, err
+		if cluster.Spec.MasterSize != backup.Status.MasterSize {
+			cluster.Spec.MasterSize = backup.Status.MasterSize
+			update = true
 		}
-	}
-	backup := cluster.Status.Restore.Backup
-	if cluster.Spec.Image == "" {
-		cluster.Spec.Image = backup.Status.ClusterImage
-		update = true
-	}
-	if cluster.Spec.MasterSize != backup.Status.MasterSize {
-		cluster.Spec.MasterSize = backup.Status.MasterSize
-		update = true
-	}
-
+	*/
 	return update, nil
 }
 
@@ -315,56 +324,65 @@ func (r *ReconcileDistributedRedisCluster) scalingDown(ctx *syncContext, current
 	return nil
 }
 
-func (r *ReconcileDistributedRedisCluster) resetClusterPassword(ctx *syncContext) error {
+func (r *ReconcileDistributedRedisCluster) checkandUpadtePassword(client client.Client, ctx *syncContext) (error, map[string]string) {
+
+	passChanged, newaclconf, newsecretver, err1 := r.checker.CheckPasswordChanged(ctx.cluster)
+	if err1 != nil {
+		ctx.reqLogger.Error(err1, "error when checking acl difference")
+		return err1, nil
+	}
+	if !passChanged {
+		ctx.reqLogger.Info("no changes in acl secrets when checking acl differences")
+		return nil, nil
+	}
+	ctx.reqLogger.Info("acl difference found trying to update password")
+	SetClusterResetPassword(&ctx.cluster.Status, "updating acl's")
+	r.crController.UpdateCRStatus(ctx.cluster)
+
 	if err := r.checker.CheckRedisNodeNum(ctx.cluster); err == nil {
 		namespace := ctx.cluster.Namespace
-		name := ctx.cluster.Name
-		sts, err := r.statefulSetController.GetStatefulSet(namespace, statefulsets.ClusterStatefulSetName(name, 0))
-		if err != nil {
-			return err
-		}
-
-		if !statefulsets.IsPasswordChanged(ctx.cluster, sts) {
-			return nil
-		}
-
-		SetClusterResetPassword(&ctx.cluster.Status, "updating cluster's password")
-		r.crController.UpdateCRStatus(ctx.cluster)
 
 		matchLabels := getLabels(ctx.cluster)
 		redisClusterPods, err := r.statefulSetController.GetStatefulSetPodsByLabels(namespace, matchLabels)
 		if err != nil {
-			return err
+			return err, newsecretver
 		}
 
-		oldPassword, err := statefulsets.GetOldRedisClusterPassword(r.client, sts)
+		adminPassword, err := statefulsets.GetRedisClusterAdminPassword(r.client, ctx.cluster, ctx.reqLogger)
 		if err != nil {
-			return err
-		}
-
-		newPassword, err := statefulsets.GetClusterPassword(r.client, ctx.cluster)
-		if err != nil {
-			return err
+			return err, newsecretver
 		}
 
 		podSet := clusterPods(redisClusterPods.Items)
-		admin, err := newRedisAdmin(podSet, oldPassword, config.RedisConf(), ctx.reqLogger)
+		admin, err := newRedisAdmin(podSet, adminPassword, config.RedisConf(), ctx.reqLogger)
 		if err != nil {
-			return err
+			return err, newsecretver
 		}
 		defer admin.Close()
+		aclcommands, err2 := statefulsets.GenerateAclcommands(ctx.reqLogger, r.client, ctx.cluster, newaclconf, newsecretver)
 
-		// Update the password recorded in the file /data/redis_password, redis pod preStop hook
-		// need /data/redis_password do CLUSTER FAILOVER
-		cmd := fmt.Sprintf("echo %s > /data/redis_password", newPassword)
-		if err := r.execer.ExecCommandInPodSet(podSet, "/bin/sh", "-c", cmd); err != nil {
-			return err
-		}
+		if err2 != nil {
+			return err2, newsecretver
 
-		// Reset all redis pod's password.
-		if err := admin.ResetPassword(newPassword); err != nil {
-			return err
+		} else {
+			ctx.reqLogger.Info("Printing acl commands to be run:")
+			for key, value := range aclcommands {
+				ctx.reqLogger.Info("user: ", key, "aclcommand: ", value)
+			}
 		}
+		/*
+			// Update the password recorded in the file /data/redis_password, redis pod preStop hook
+			// need /data/redis_password do CLUSTER FAILOVER
+			cmd := fmt.Sprintf("echo %s > /data/redis_password", adminPassword)
+			if err := r.execer.ExecCommandInPodSet(podSet, "/bin/sh", "-c", cmd); err != nil {
+				return err
+			}
+
+			// Reset all redis pod's password.
+			if err := admin.ResetPassword(newPassword); err != nil {
+				return err
+			}
+		*/
 	}
-	return nil
+	return nil, newsecretver
 }

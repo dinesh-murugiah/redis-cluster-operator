@@ -82,8 +82,8 @@ func compareObj(new, old *DistributedRedisCluster, log logr.Logger) bool {
 		return true
 	}
 
-	if !reflect.DeepEqual(new.Spec.PasswordSecret, old.Spec.PasswordSecret) {
-		log.Info("compare password", "new", new.Spec.PasswordSecret, "old", old.Spec.PasswordSecret)
+	if !reflect.DeepEqual(new.Spec.AdminSecret, old.Spec.AdminSecret) {
+		log.Info("compare password", "new", new.Spec.AdminSecret, "old", old.Spec.AdminSecret)
 		return true
 	}
 
